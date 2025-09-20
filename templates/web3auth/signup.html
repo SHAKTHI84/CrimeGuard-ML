@@ -1,0 +1,185 @@
+{% load static %}
+{% load crispy_forms_tags %}
+
+<center>
+  <style></style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" integrity="sha384-xOolHFLEh07PJGoPkLv1IbcEPTNtaed2xpHsD9ESMhqIYd0nLMwNLD69Npy4HI+N" crossorigin="anonymous">  
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+    <form action="" method="POST">
+      {% csrf_token %}
+      {{ form|crispy }}
+      <button type="submit">Sign Up</button>
+    </form>
+  </body>
+
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js" integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.min.js" integrity="sha384-+sLIOodYLS7CIrQpBjl+C7nPvqq+FbNUBDunl/OZv93DB7Ln/533i8e/mZXLi/P+" crossorigin="anonymous"></script>
+
+</center>
+</html>
+
+<a href="{% url 'web3auth:web3auth_signup' %}"><button>Sign Up using Metamask</button></a>
+
+<button onclick="startLogin()" type=submit>Login using Metamask</button>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+<!-- if the above script did not work use the below script -->
+<script src="https://cdn.jsdelivr.net/gh/ethereum/web3.js@1.0.0-beta.34/dist/web3.min.js"></script>
+
+
+<script>
+ function startLogin() {
+    let web3 = new Web3(window.ethereum);
+
+
+    function getCookie(name) {
+    var cookieValue = null;
+    if (document.cookie && document.cookie != '') {
+        var cookies = document.cookie.split(';');
+        for (var i = 0; i < cookies.length; i++) {
+            var cookie = jQuery.trim(cookies[i]);
+            // Does this cookie string begin with the name we want?
+            if (cookie.substring(0, name.length + 1) == (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function loginWithSignature(address, signature, login_url, onLoginRequestError, onLoginFail, onLoginSuccess) {
+    var request = new XMLHttpRequest();
+    request.open('POST', login_url, true);
+    request.onload = function () {
+        if (request.status >= 200 && request.status < 400) {
+            // Success!
+            var resp = JSON.parse(request.responseText);
+            if (resp.success) {
+                if (typeof onLoginSuccess == 'function') {
+                    onLoginSuccess(resp);
+                }
+            } else {
+                if (typeof onLoginFail == 'function') {
+                    onLoginFail(resp);
+                }
+            }
+        } else {
+            // We reached our target server, but it returned an error
+            console.log("Autologin failed - request status " + request.status);
+            if (typeof onLoginRequestError == 'function') {
+                onLoginRequestError(request);
+            }
+        }
+    };
+
+    request.onerror = function () {
+        console.log("Autologin failed - there was an error");
+        if (typeof onLoginRequestError == 'function') {
+            onLoginRequestError(request);
+        }
+        // There was a connection error of some sort
+    };
+    request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+    request.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
+    var formData = 'address=' + address + '&signature=' + signature;
+    request.send(formData);
+}
+
+function checkWeb3(callback) {
+    web3.eth.getAccounts(function (err, accounts) { // Check for wallet being locked
+        if (err) {
+            throw err;
+        }
+        callback(accounts.length !== 0);
+    });
+}
+
+function web3Login(login_url, onTokenRequestFail, onTokenSignFail, onTokenSignSuccess, // used in this function
+                   onLoginRequestError, onLoginFail, onLoginSuccess) {
+    // used in loginWithSignature
+
+    // 1. Retrieve arbitrary login token from server
+    // 2. Sign it using web3
+    // 3. Send signed message & your eth address to server
+    // 4. If server validates that you signature is valid
+    // 4.1 The user with an according eth address is found - you are logged in
+    // 4.2 The user with an according eth address is NOT found - you are redirected to signup page
+
+
+    var request = new XMLHttpRequest();
+    request.open('GET', login_url, true);
+
+    request.onload = async function () {
+        if (request.status >= 200 && request.status < 400) {
+            // Success!
+            var resp = JSON.parse(request.responseText);
+            var token = resp.data;
+            console.log("Token: " + token);
+            var msg = web3.utils.toHex(token);
+            var from = await web3.eth.getAccounts();
+            web3.eth.personal.sign(msg, from[0], function (err, result) {
+                if (err) {
+                    if (typeof onTokenSignFail == 'function') {
+                        onTokenSignFail(err);
+                    }
+                    console.log("Failed signing message \n" + msg + "\n - " + err);
+                } else {
+                    console.log("Signed message: " + result);
+                    if (typeof onTokenSignSuccess == 'function') {
+                        onTokenSignSuccess(result);
+                    }
+                    loginWithSignature(from, result, login_url, onLoginRequestError, onLoginFail, onLoginSuccess);
+                }
+            });
+
+        } else {
+            // We reached our target server, but it returned an error
+            console.log("Autologin failed - request status " + request.status);
+            if (typeof onTokenRequestFail == 'function') {
+                onTokenRequestFail(request);
+            }
+        }
+    };
+
+    request.onerror = function () {
+        // There was a connection error of some sort
+        console.log("Autologin failed - there was an error");
+        if (typeof onTokenRequestFail == 'function') {
+            onTokenRequestFail(request);
+        }
+    };
+    request.send();
+}
+  if (typeof web3 !== 'undefined') {
+    checkWeb3(async function (loggedIn) {
+      if (!loggedIn) {
+        // web3 = await window.ethereum.enable();
+        web3 = await window.ethereum.request({method: 'eth_requestAccounts'})
+        window.web3 = new Web3(window.ethereum);
+        // alert("Please unlock your web3 provider (probably, Metamask)")
+      } else {
+        var login_url = "{% url 'web3auth:web3auth_login_api' %}";
+        web3Login(login_url, console.log, console.log, console.log, console.log, console.log, function (resp) {
+          console.log(resp);
+          window.location.replace(resp.redirect_url);
+        });
+      }
+    });
+
+  } else {
+    alert('web3 missing');
+  }
+}
+
+ </script>
